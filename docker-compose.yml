@@ -1,0 +1,55 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: splitwise-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+    networks:
+      - splitwise-network
+    depends_on:
+      - jaeger
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # No need for VITE_API_URL in Docker - we use Nginx proxy
+    container_name: splitwise-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - splitwise-network
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: splitwise-jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # Jaeger collector HTTP
+      - "6831:6831/udp" # Jaeger agent UDP
+      - "6832:6832/udp" # Jaeger agent UDP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - splitwise-network
+    restart: unless-stopped
+
+networks:
+  splitwise-network:
+    driver: bridge
+
