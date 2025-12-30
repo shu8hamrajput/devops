@@ -365,6 +365,26 @@ function Groups() {
                   </ul>
                 </div>
               )}
+              {groupBalances[group.id] && groupBalances[group.id].balances && groupBalances[group.id].balances.length > 0 && (
+                <div className="group-balance-summary">
+                  <strong>Group Balances:</strong>
+                  <ul>
+                    {groupBalances[group.id].balances.slice(0, 3).map((balance, idx) => {
+                      const fromUser = users.find(u => u.id === balance.from_user_id)
+                      const toUser = users.find(u => u.id === balance.to_user_id)
+                      const amount = balance.amount || 0
+                      return (
+                        <li key={idx}>
+                          {fromUser?.name || balance.from_user_id} owes {toUser?.name || balance.to_user_id} ${amount.toFixed(2)}
+                        </li>
+                      )
+                    })}
+                    {groupBalances[group.id].balances.length > 3 && (
+                      <li className="more-balances">+{groupBalances[group.id].balances.length - 3} more</li>
+                    )}
+                  </ul>
+                </div>
+              )}
             </div>
             <div className="group-actions">
               <button 

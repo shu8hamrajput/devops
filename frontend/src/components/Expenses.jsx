@@ -409,12 +409,12 @@ function Expenses() {
               </div>
               {splitConfig.shareType === SHARE_TYPES.PERCENTAGE && (
                 <p className="hint">
-                  Total: {Object.values(splitConfig.userShares).reduce((a, b) => a + (parseFloat(b) || 0), 0).toFixed(2)}%
+                  Total: {(Object.values(splitConfig.userShares || {}).reduce((a, b) => a + (parseFloat(b) || 0), 0) || 0).toFixed(2)}%
                 </p>
               )}
               {splitConfig.shareType === SHARE_TYPES.EXACT_AMOUNT && formData.amount && (
                 <p className="hint">
-                  Total: ${Object.values(splitConfig.userShares).reduce((a, b) => a + (parseFloat(b) || 0), 0).toFixed(2)} / ${parseFloat(formData.amount).toFixed(2)}
+                  Total: ${(Object.values(splitConfig.userShares || {}).reduce((a, b) => a + (parseFloat(b) || 0), 0) || 0).toFixed(2)} / ${(parseFloat(formData.amount) || 0).toFixed(2)}
                 </p>
               )}
             </div>
@@ -469,7 +469,7 @@ function Expenses() {
           <div key={expense.id} className="expense-card">
             <div className="expense-header">
               <h3>{expense.description}</h3>
-              <span className="expense-amount">${parseFloat(expense.amount).toFixed(2)}</span>
+              <span className="expense-amount">${(parseFloat(expense.amount) || 0).toFixed(2)}</span>
             </div>
             <div className="expense-details">
               <p><strong>Paid by:</strong> {getUserName(expense.paid_by)}</p>

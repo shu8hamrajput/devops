@@ -282,17 +282,17 @@ function Dashboard() {
             <div className="balance-details">
               <div className="balance-item">
                 <span className="balance-label">You Owe:</span>
-                <span className="balance-value negative">${userBalance.total_owed.toFixed(2)}</span>
+                <span className="balance-value negative">${(userBalance.total_owed || 0).toFixed(2)}</span>
               </div>
               <div className="balance-item">
                 <span className="balance-label">You Are Owed:</span>
-                <span className="balance-value positive">${userBalance.total_owed_to.toFixed(2)}</span>
+                <span className="balance-value positive">${(userBalance.total_owed_to || 0).toFixed(2)}</span>
               </div>
               <div className="balance-item net">
                 <span className="balance-label">Net Balance:</span>
-                <span className={`balance-value ${userBalance.net_balance >= 0 ? 'positive' : 'negative'}`}>
-                  ${Math.abs(userBalance.net_balance).toFixed(2)}
-                  {userBalance.net_balance >= 0 ? ' owed to you' : ' you owe'}
+                <span className={`balance-value ${(userBalance.net_balance || 0) >= 0 ? 'positive' : 'negative'}`}>
+                  ${Math.abs(userBalance.net_balance || 0).toFixed(2)}
+                  {(userBalance.net_balance || 0) >= 0 ? ' owed to you' : ' you owe'}
                 </span>
               </div>
             </div>
@@ -327,9 +327,10 @@ function Dashboard() {
                           {groupBalance.balances.slice(0, 3).map((balance, idx) => {
                             const fromUser = allUsers.find(u => u.id === balance.from_user_id)
                             const toUser = allUsers.find(u => u.id === balance.to_user_id)
+                            const amount = balance.amount || 0
                             return (
                               <li key={idx}>
-                                {fromUser?.name || balance.from_user_id} owes {toUser?.name || balance.to_user_id} ${balance.amount.toFixed(2)}
+                                {fromUser?.name || balance.from_user_id} owes {toUser?.name || balance.to_user_id} ${amount.toFixed(2)}
                               </li>
                             )
                           })}
@@ -360,12 +361,12 @@ function Dashboard() {
                       <h4>{user.name}</h4>
                       <p>{user.email}</p>
                     </div>
-                    {balance !== 0 && (
+                    {balance !== 0 && balance !== undefined && balance !== null && (
                       <div className="user-balance">
                         {balance > 0 ? (
-                          <span className="balance-positive">You owe ${balance.toFixed(2)}</span>
+                          <span className="balance-positive">You owe ${(balance || 0).toFixed(2)}</span>
                         ) : (
-                          <span className="balance-negative">Owes you ${Math.abs(balance).toFixed(2)}</span>
+                          <span className="balance-negative">Owes you ${Math.abs(balance || 0).toFixed(2)}</span>
                         )}
                       </div>
                     )}
