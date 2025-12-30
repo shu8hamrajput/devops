@@ -12,9 +12,10 @@ import (
 
 // expenseService implements the ExpenseService port
 type expenseService struct {
-	expenseRepo outbound.ExpenseRepository
-	userRepo    outbound.UserRepository
-	groupRepo   outbound.GroupRepository
+	expenseRepo  outbound.ExpenseRepository
+	userRepo     outbound.UserRepository
+	groupRepo    outbound.GroupRepository
+	splitService *expenseSplitService
 }
 
 // NewExpenseService creates a new expense service
@@ -22,11 +23,13 @@ func NewExpenseService(
 	expenseRepo outbound.ExpenseRepository,
 	userRepo outbound.UserRepository,
 	groupRepo outbound.GroupRepository,
+	splitRepo outbound.ExpenseSplitRepository,
 ) inbound.ExpenseService {
 	return &expenseService{
-		expenseRepo: expenseRepo,
-		userRepo:    userRepo,
-		groupRepo:   groupRepo,
+		expenseRepo:  expenseRepo,
+		userRepo:     userRepo,
+		groupRepo:    groupRepo,
+		splitService: NewExpenseSplitService(splitRepo, userRepo, groupRepo),
 	}
 }
 
@@ -68,6 +71,65 @@ func (s *expenseService) CreateExpense(description string, amount float64, paidB
 	expense := entity.NewExpense(description, amount, paidByUUID, groupUUID)
 	if err := s.expenseRepo.Create(expense); err != nil {
 		return nil, fmt.Errorf("failed to create expense: %w", err)
+	}
+
+	// Auto-split expense equally among group members by default
+	_, err = s.splitService.SplitExpense(expense, entity.ShareTypeEqual, nil)
+	if err != nil {
+		// If splitting fails, delete the expense to maintain consistency
+		s.expenseRepo.Delete(expense.ID.String())
+		return nil, fmt.Errorf("failed to split expense: %w", err)
+	}
+
+	return expense, nil
+}
+
+// CreateExpenseWithSplit creates a new expense with custom split configuration
+func (s *expenseService) CreateExpenseWithSplit(description string, amount float64, paidBy, groupID string, shareType entity.ShareType, userShares map[string]float64) (*entity.Expense, error) {
+	if description == "" {
+		return nil, fmt.Errorf("description cannot be empty")
+	}
+	if amount <= 0 {
+		return nil, fmt.Errorf("amount must be greater than zero")
+	}
+
+	paidByUUID, err := uuid.Parse(paidBy)
+	if err != nil {
+		return nil, fmt.Errorf("invalid paidBy user ID: %w", err)
+	}
+
+	groupUUID, err := uuid.Parse(groupID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid group ID: %w", err)
+	}
+
+	// Validate that user exists
+	_, err = s.userRepo.FindByID(paidBy)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	// Validate that group exists
+	group, err := s.groupRepo.FindByID(groupID)
+	if err != nil {
+		return nil, fmt.Errorf("group not found: %w", err)
+	}
+
+	// Update group timestamp
+	group.UpdateTimestamp()
+	s.groupRepo.Update(group)
+
+	expense := entity.NewExpense(description, amount, paidByUUID, groupUUID)
+	if err := s.expenseRepo.Create(expense); err != nil {
+		return nil, fmt.Errorf("failed to create expense: %w", err)
+	}
+
+	// Split expense according to the provided configuration
+	_, err = s.splitService.SplitExpense(expense, shareType, userShares)
+	if err != nil {
+		// If splitting fails, delete the expense to maintain consistency
+		s.expenseRepo.Delete(expense.ID.String())
+		return nil, fmt.Errorf("failed to split expense: %w", err)
 	}
 
 	return expense, nil

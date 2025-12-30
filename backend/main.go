@@ -72,19 +72,22 @@ func main() {
 	authRepo := repository.NewPostgresAuthRepository(db)
 	cache := repository.NewRedisCache(redisClient)
 	expenseRepo := repository.NewPostgresExpenseRepository(db)
+	expenseSplitRepo := repository.NewPostgresExpenseSplitRepository(db)
 	groupRepo := repository.NewPostgresGroupRepository(db)
 
 	// Initialize application services (implementing inbound ports)
 	authService := service.NewAuthService(authRepo, cache)
 	userService := service.NewUserService(userRepo)
-	expenseService := service.NewExpenseService(expenseRepo, userRepo, groupRepo)
+	expenseService := service.NewExpenseService(expenseRepo, userRepo, groupRepo, expenseSplitRepo)
 	groupService := service.NewGroupService(groupRepo, userRepo)
+	balanceService := service.NewBalanceService(expenseRepo, expenseSplitRepo, userRepo, groupRepo)
 
 	// Initialize inbound adapters (HTTP handlers)
 	authHandler := httphandler.NewAuthHandler(authService)
 	userHandler := httphandler.NewUserHandler(userService)
 	expenseHandler := httphandler.NewExpenseHandler(expenseService)
 	groupHandler := httphandler.NewGroupHandler(groupService)
+	balanceHandler := httphandler.NewBalanceHandler(balanceService)
 
 	// Setup HTTP routes
 	router := mux.NewRouter()
@@ -125,6 +128,11 @@ func main() {
 	protectedRouter.HandleFunc("/groups/{id}", groupHandler.DeleteGroup).Methods("DELETE")
 	protectedRouter.HandleFunc("/groups/{id}/users", groupHandler.AddUserToGroup).Methods("POST")
 	protectedRouter.HandleFunc("/groups/{id}/users/{user_id}", groupHandler.RemoveUserFromGroup).Methods("DELETE")
+
+	// Balance routes
+	router.HandleFunc("/groups/{id}/balance", balanceHandler.GetGroupBalance).Methods("GET")
+	router.HandleFunc("/users/{id}/balance", balanceHandler.GetUserBalance).Methods("GET")
+	router.HandleFunc("/users/{id}/balance/{other_user_id}", balanceHandler.GetUserToUserBalance).Methods("GET")
 
 	// Health check
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +176,9 @@ func main() {
 	fmt.Println("  DELETE /groups/{id} (protected)")
 	fmt.Println("  POST   /groups/{id}/users (protected)")
 	fmt.Println("  DELETE /groups/{id}/users/{user_id} (protected)")
+	fmt.Println("  GET    /groups/{id}/balance")
+	fmt.Println("  GET    /users/{id}/balance")
+	fmt.Println("  GET    /users/{id}/balance/{other_user_id}")
 	fmt.Println("  GET    /health")
 
 	// Setup graceful shutdown

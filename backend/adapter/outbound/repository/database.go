@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/redis/go-redis/v9"
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 )
 
 // InitPostgresDB initializes and returns a PostgreSQL database connection
@@ -127,12 +127,53 @@ func CreateTables(db *sql.DB) error {
 		return fmt.Errorf("failed to create expenses table: %w", err)
 	}
 
+	// Add deleted_at column if it doesn't exist (migration for existing databases)
+	alterExpensesQuery := `
+		DO $$ 
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM information_schema.columns 
+				WHERE table_name = 'expenses' AND column_name = 'deleted_at'
+			) THEN
+				ALTER TABLE expenses ADD COLUMN deleted_at TIMESTAMP;
+			END IF;
+		END $$;
+	`
+	_, err = db.Exec(alterExpensesQuery)
+	if err != nil {
+		return fmt.Errorf("failed to add deleted_at column to expenses table: %w", err)
+	}
+
+	// Create expense_splits table
+	expenseSplitsQuery := `
+		CREATE TABLE IF NOT EXISTS expense_splits (
+			id UUID PRIMARY KEY,
+			expense_id UUID NOT NULL,
+			user_id UUID NOT NULL,
+			amount DECIMAL(10, 2) NOT NULL,
+			share_type VARCHAR(20) NOT NULL,
+			share_value DECIMAL(10, 2) NOT NULL,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL,
+			CONSTRAINT fk_expense_split_expense FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE,
+			CONSTRAINT fk_expense_split_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			CHECK (amount >= 0),
+			CHECK (share_type IN ('EQUAL', 'PERCENTAGE', 'EXACT_AMOUNT', 'SHARES'))
+		);
+	`
+	_, err = db.Exec(expenseSplitsQuery)
+	if err != nil {
+		return fmt.Errorf("failed to create expense_splits table: %w", err)
+	}
+
 	// Create indexes for better query performance
 	indexesQuery := `
 		CREATE INDEX IF NOT EXISTS idx_expenses_paid_by ON expenses(paid_by);
 		CREATE INDEX IF NOT EXISTS idx_expenses_owed_by ON expenses(owed_by);
 		CREATE INDEX IF NOT EXISTS idx_expenses_group_id ON expenses(group_id);
 		CREATE INDEX IF NOT EXISTS idx_expenses_updated_at ON expenses(updated_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_expense_splits_expense_id ON expense_splits(expense_id);
+		CREATE INDEX IF NOT EXISTS idx_expense_splits_user_id ON expense_splits(user_id);
 	`
 	_, err = db.Exec(indexesQuery)
 	if err != nil {
@@ -152,6 +193,23 @@ func CreateTables(db *sql.DB) error {
 	_, err = db.Exec(groupsQuery)
 	if err != nil {
 		return fmt.Errorf("failed to create groups table: %w", err)
+	}
+
+	// Add deleted_at column if it doesn't exist (migration for existing databases)
+	alterQuery := `
+		DO $$ 
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM information_schema.columns 
+				WHERE table_name = 'groups' AND column_name = 'deleted_at'
+			) THEN
+				ALTER TABLE groups ADD COLUMN deleted_at TIMESTAMP;
+			END IF;
+		END $$;
+	`
+	_, err = db.Exec(alterQuery)
+	if err != nil {
+		return fmt.Errorf("failed to add deleted_at column to groups table: %w", err)
 	}
 
 	// Create group_users junction table
