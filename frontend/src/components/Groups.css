@@ -326,3 +326,33 @@
   grid-column: 1 / -1;
 }
 
+.group-balance-summary {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f0f0f0;
+}
+
+.group-balance-summary strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #333;
+  font-size: 0.9rem;
+}
+
+.group-balance-summary ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0 0;
+}
+
+.group-balance-summary li {
+  font-size: 0.85rem;
+  color: #666;
+  padding: 0.25rem 0;
+}
+
+.group-balance-summary li.more-balances {
+  color: #999;
+  font-style: italic;
+}
+

@@ -184,6 +184,28 @@ export const expenseAPI = {
   
   getExpensesByGroup: (groupId) => 
     api.get(`/groups/${groupId}/expenses`),
+  
+  createExpenseWithSplit: (description, amount, paidBy, groupId, shareType, userShares) =>
+    api.post('/expenses', {
+      description,
+      amount,
+      paid_by: paidBy,
+      group_id: groupId,
+      share_type: shareType,
+      user_shares: userShares,
+    }),
+}
+
+// Balance API
+export const balanceAPI = {
+  getGroupBalance: (groupId) =>
+    api.get(`/groups/${groupId}/balance`),
+  
+  getUserBalance: (userId) =>
+    api.get(`/users/${userId}/balance`),
+  
+  getUserToUserBalance: (userId, otherUserId) =>
+    api.get(`/users/${userId}/balance/${otherUserId}`),
 }
 
 export default api

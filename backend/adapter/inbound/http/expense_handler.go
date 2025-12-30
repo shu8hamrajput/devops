@@ -23,11 +23,13 @@ func NewExpenseHandler(expenseService inbound.ExpenseService) *ExpenseHandler {
 
 // CreateExpenseRequest represents the request body for creating an expense
 type CreateExpenseRequest struct {
-	Description string  `json:"description"`
-	Amount      float64 `json:"amount"`
-	PaidBy      string  `json:"paid_by"`
-	GroupID     string  `json:"group_id,omitempty"`
-	OwedBy      string  `json:"owed_by,omitempty"` // For user-to-user expenses
+	Description string             `json:"description"`
+	Amount      float64            `json:"amount"`
+	PaidBy      string             `json:"paid_by"`
+	GroupID     string             `json:"group_id,omitempty"`
+	OwedBy      string             `json:"owed_by,omitempty"` // For user-to-user expenses
+	ShareType   entity.ShareType   `json:"share_type,omitempty"` // Optional: EQUAL, PERCENTAGE, EXACT_AMOUNT, SHARES
+	UserShares  map[string]float64 `json:"user_shares,omitempty"` // Optional: userID -> share value
 }
 
 // ExpenseResponse represents the response for expense operations
@@ -55,7 +57,14 @@ func (h *ExpenseHandler) CreateExpense(w http.ResponseWriter, r *http.Request) {
 
 	// Determine if it's a group expense or user-to-user expense
 	if req.GroupID != "" {
-		expense, err = h.expenseService.CreateExpense(req.Description, req.Amount, req.PaidBy, req.GroupID)
+		// Check if split configuration is provided
+		if req.ShareType != "" && req.UserShares != nil && len(req.UserShares) > 0 {
+			// Use CreateExpenseWithSplit for custom split
+			expense, err = h.expenseService.CreateExpenseWithSplit(req.Description, req.Amount, req.PaidBy, req.GroupID, req.ShareType, req.UserShares)
+		} else {
+			// Use default equal split
+			expense, err = h.expenseService.CreateExpense(req.Description, req.Amount, req.PaidBy, req.GroupID)
+		}
 	} else if req.OwedBy != "" {
 		expense, err = h.expenseService.CreateUserToUserExpense(req.Description, req.Amount, req.PaidBy, req.OwedBy)
 	} else {

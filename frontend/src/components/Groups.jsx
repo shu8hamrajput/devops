@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { groupAPI, userAPI } from '../services/api'
+import { groupAPI, userAPI, balanceAPI } from '../services/api'
 import { useToastContext } from '../context/ToastContext'
 import './Groups.css'
 
 function Groups() {
   const [groups, setGroups] = useState([])
   const [users, setUsers] = useState([])
+  const [groupBalances, setGroupBalances] = useState({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const { success, error: showError } = useToastContext()
@@ -36,7 +37,23 @@ function Groups() {
     setError(null)
     try {
       const response = await groupAPI.getAllGroups()
-      setGroups(response.data || [])
+      const groupsData = response.data || []
+      setGroups(groupsData)
+      
+      // Load balances for all groups
+      const balancePromises = groupsData.map(group =>
+        balanceAPI.getGroupBalance(group.id)
+          .then(res => ({ groupId: group.id, balance: res.data }))
+          .catch(() => null)
+      )
+      const balanceResults = await Promise.all(balancePromises)
+      const balanceMap = {}
+      balanceResults.forEach(result => {
+        if (result) {
+          balanceMap[result.groupId] = result.balance
+        }
+      })
+      setGroupBalances(balanceMap)
     } catch (err) {
       const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to load groups';
       setError(typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage))

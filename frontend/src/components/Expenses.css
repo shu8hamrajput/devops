@@ -56,6 +56,48 @@
   border-color: #667eea;
 }
 
+.split-config {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px solid #e0e0e0;
+}
+
+.split-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.split-item label {
+  flex: 0 0 150px;
+  font-weight: 500;
+  color: #333;
+}
+
+.split-item input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.split-item input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.split-unit {
+  flex: 0 0 30px;
+  color: #666;
+  font-size: 0.9rem;
+}
+
 .expense-form .hint {
   margin-top: 0.5rem;
   font-size: 0.85rem;
@@ -305,4 +347,46 @@
 .expense-form select:focus {
   outline: none;
   border-color: #667eea;
+}
+
+.split-config {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px solid #e0e0e0;
+}
+
+.split-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.split-item label {
+  flex: 0 0 150px;
+  font-weight: 500;
+  color: #333;
+}
+
+.split-item input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.split-item input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.split-unit {
+  flex: 0 0 30px;
+  color: #666;
+  font-size: 0.9rem;
 }

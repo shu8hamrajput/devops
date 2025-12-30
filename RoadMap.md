@@ -91,57 +91,57 @@
 **Goal:** Implement core Splitwise functionality - splitting expenses and calculating balances
 
 #### Backend Tasks
-- [ ] **Expense splitting entity**
+- [x] **Expense splitting entity**
   - Add `ExpenseSplit` entity with fields: ExpenseID, UserID, Amount, ShareType
   - Add split types: EQUAL, PERCENTAGE, EXACT_AMOUNT, SHARES
   - Create migration for expense_splits table
 
-- [ ] **Expense splitting service**
+- [x] **Expense splitting service**
   - Add `SplitExpense` method to ExpenseService
   - Implement equal split logic
   - Implement percentage split logic
   - Implement custom amount split logic
   - Validate splits sum to expense amount
 
-- [ ] **Balance calculation service**
+- [x] **Balance calculation service**
   - Create new `BalanceService` with port interface
   - Implement `CalculateGroupBalance(groupID)` - returns who owes whom
   - Implement `CalculateUserBalance(userID)` - returns net balance
   - Implement `CalculateUserToUserBalance(userID1, userID2)` - returns balance between two users
   - Use debt simplification algorithm (minimize transactions)
 
-- [ ] **Balance endpoints**
+- [x] **Balance endpoints**
   - `GET /groups/{id}/balance` - group balance summary
   - `GET /users/{id}/balance` - user's overall balance
   - `GET /users/{id}/balance/{other_user_id}` - balance with specific user
 
-- [ ] **Update expense creation**
+- [x] **Update expense creation**
   - Modify `CreateExpense` to accept split configuration
   - Auto-split expenses equally among group members by default
   - Store splits in database
 
 #### Frontend Tasks
-- [ ] **Expense splitting UI**
+- [x] **Expense splitting UI**
   - Add split type selector (Equal, Percentage, Custom)
   - Add split configuration form
   - Display split details in expense list
   - Show who owes what for each expense
 
-- [ ] **Balance visualization**
+- [x] **Balance visualization**
   - Add balance card to Dashboard
   - Show "You owe" and "You are owed" amounts
   - Display group balances in Groups component
   - Add balance view in Expenses component
 
-- [ ] **User-to-user balance view**
+- [x] **User-to-user balance view**
   - Show balance between current user and other users
   - Display in Dashboard and Users component
 
 #### Testing
-- [ ] Unit tests for splitting logic
-- [ ] Unit tests for balance calculation
-- [ ] Integration tests for balance endpoints
-- [ ] Edge case testing (negative balances, zero amounts)
+- [x] Unit tests for splitting logic
+- [x] Unit tests for balance calculation
+- [x] Integration tests for balance endpoints
+- [x] Edge case testing (negative balances, zero amounts)
 
 **Deliverables:**
 - Expenses can be split among group members

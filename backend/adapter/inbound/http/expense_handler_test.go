@@ -27,6 +27,11 @@ func (m *mockExpenseService) CreateExpense(description string, amount float64, p
 	return expense, nil
 }
 
+func (m *mockExpenseService) CreateExpenseWithSplit(description string, amount float64, paidBy, groupID string, shareType entity.ShareType, userShares map[string]float64) (*entity.Expense, error) {
+	// For testing, just create expense normally
+	return m.CreateExpense(description, amount, paidBy, groupID)
+}
+
 func (m *mockExpenseService) CreateUserToUserExpense(description string, amount float64, paidBy, owedBy string) (*entity.Expense, error) {
 	paidByUUID, _ := uuid.Parse(paidBy)
 	owedByUUID, _ := uuid.Parse(owedBy)

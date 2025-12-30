@@ -3,6 +3,13 @@ import { expenseAPI, groupAPI, userAPI } from '../services/api'
 import { useToastContext } from '../context/ToastContext'
 import './Expenses.css'
 
+const SHARE_TYPES = {
+  EQUAL: 'EQUAL',
+  PERCENTAGE: 'PERCENTAGE',
+  EXACT_AMOUNT: 'EXACT_AMOUNT',
+  SHARES: 'SHARES'
+}
+
 function Expenses() {
   const [expenses, setExpenses] = useState([])
   const [groups, setGroups] = useState([])
@@ -15,6 +22,10 @@ function Expenses() {
     amount: '', 
     paid_by: '', 
     group_id: '' 
+  })
+  const [splitConfig, setSplitConfig] = useState({
+    shareType: SHARE_TYPES.EQUAL,
+    userShares: {}
   })
   const [showForm, setShowForm] = useState(false)
   const [editingExpense, setEditingExpense] = useState(null)
@@ -68,13 +79,65 @@ function Expenses() {
     }
   }
 
+  const getSelectedGroupMembers = () => {
+    if (!formData.group_id) return []
+    const group = groups.find(g => g.id === formData.group_id)
+    return group ? (group.user_ids || []) : []
+  }
+
+  const initializeSplitConfig = () => {
+    const members = getSelectedGroupMembers()
+    const newUserShares = {}
+    members.forEach(userId => {
+      if (splitConfig.shareType === SHARE_TYPES.EQUAL) {
+        newUserShares[userId] = 1.0
+      } else {
+        newUserShares[userId] = 0
+      }
+    })
+    setSplitConfig({ ...splitConfig, userShares: newUserShares })
+  }
+
+  useEffect(() => {
+    if (formData.group_id && !editingExpense) {
+      initializeSplitConfig()
+    }
+  }, [formData.group_id])
+
+  const handleSplitTypeChange = (shareType) => {
+    const members = getSelectedGroupMembers()
+    const newUserShares = {}
+    
+    if (shareType === SHARE_TYPES.EQUAL) {
+      members.forEach(userId => {
+        newUserShares[userId] = 1.0
+      })
+    } else {
+      members.forEach(userId => {
+        newUserShares[userId] = 0
+      })
+    }
+    
+    setSplitConfig({ shareType, userShares: newUserShares })
+  }
+
+  const handleUserShareChange = (userId, value) => {
+    setSplitConfig({
+      ...splitConfig,
+      userShares: {
+        ...splitConfig.userShares,
+        [userId]: parseFloat(value) || 0
+      }
+    })
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
     try {
       if (editingExpense) {
-        // Update existing expense
+        // Update existing expense (splits not updated in edit mode for now)
         await expenseAPI.updateExpense(
           editingExpense.id,
           formData.description,
@@ -85,15 +148,30 @@ function Expenses() {
         )
         setEditingExpense(null)
       } else {
-        // Create new expense
-        await expenseAPI.createExpense(
-          formData.description,
-          parseFloat(formData.amount),
-          formData.paid_by,
-          formData.group_id
-        )
+        // Create new expense with split configuration
+        const useCustomSplit = splitConfig.shareType !== SHARE_TYPES.EQUAL || 
+          Object.values(splitConfig.userShares).some(v => v !== 1.0 && v !== 0)
+        
+        if (useCustomSplit && Object.keys(splitConfig.userShares).length > 0) {
+          await expenseAPI.createExpenseWithSplit(
+            formData.description,
+            parseFloat(formData.amount),
+            formData.paid_by,
+            formData.group_id,
+            splitConfig.shareType,
+            splitConfig.userShares
+          )
+        } else {
+          await expenseAPI.createExpense(
+            formData.description,
+            parseFloat(formData.amount),
+            formData.paid_by,
+            formData.group_id
+          )
+        }
       }
       setFormData({ description: '', amount: '', paid_by: '', group_id: '' })
+      setSplitConfig({ shareType: SHARE_TYPES.EQUAL, userShares: {} })
       setShowForm(false)
       success(editingExpense ? 'Expense updated successfully' : 'Expense created successfully')
       if (selectedGroup) {
@@ -123,6 +201,7 @@ function Expenses() {
   const handleCancelEdit = () => {
     setEditingExpense(null)
     setFormData({ description: '', amount: '', paid_by: '', group_id: '' })
+    setSplitConfig({ shareType: SHARE_TYPES.EQUAL, userShares: {} })
     setShowForm(false)
   }
 
@@ -275,6 +354,72 @@ function Expenses() {
               <p className="hint">No groups available. Create a group first.</p>
             )}
           </div>
+
+          {!editingExpense && formData.group_id && (
+            <div className="form-group">
+              <label>Split Type</label>
+              <select
+                value={splitConfig.shareType}
+                onChange={(e) => handleSplitTypeChange(e.target.value)}
+              >
+                <option value={SHARE_TYPES.EQUAL}>Equal</option>
+                <option value={SHARE_TYPES.PERCENTAGE}>Percentage</option>
+                <option value={SHARE_TYPES.EXACT_AMOUNT}>Exact Amount</option>
+                <option value={SHARE_TYPES.SHARES}>Shares</option>
+              </select>
+              <p className="hint">
+                {splitConfig.shareType === SHARE_TYPES.EQUAL && 'Split equally among all group members'}
+                {splitConfig.shareType === SHARE_TYPES.PERCENTAGE && 'Split by percentage (must sum to 100%)'}
+                {splitConfig.shareType === SHARE_TYPES.EXACT_AMOUNT && 'Split by exact amounts (must sum to expense amount)'}
+                {splitConfig.shareType === SHARE_TYPES.SHARES && 'Split by shares (e.g., 2:1:1 means first person gets 2/4, others get 1/4 each)'}
+              </p>
+            </div>
+          )}
+
+          {!editingExpense && formData.group_id && splitConfig.shareType !== SHARE_TYPES.EQUAL && (
+            <div className="form-group">
+              <label>Split Configuration</label>
+              <div className="split-config">
+                {getSelectedGroupMembers().map(userId => {
+                  const user = users.find(u => u.id === userId)
+                  if (!user) return null
+                  
+                  return (
+                    <div key={userId} className="split-item">
+                      <label>{user.name}</label>
+                      <input
+                        type="number"
+                        step={splitConfig.shareType === SHARE_TYPES.PERCENTAGE ? "0.01" : "0.01"}
+                        min="0"
+                        value={splitConfig.userShares[userId] || 0}
+                        onChange={(e) => handleUserShareChange(userId, e.target.value)}
+                        placeholder={
+                          splitConfig.shareType === SHARE_TYPES.PERCENTAGE ? "0-100" :
+                          splitConfig.shareType === SHARE_TYPES.EXACT_AMOUNT ? "Amount" :
+                          "Shares"
+                        }
+                      />
+                      <span className="split-unit">
+                        {splitConfig.shareType === SHARE_TYPES.PERCENTAGE ? "%" :
+                         splitConfig.shareType === SHARE_TYPES.EXACT_AMOUNT ? "$" : ""}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              {splitConfig.shareType === SHARE_TYPES.PERCENTAGE && (
+                <p className="hint">
+                  Total: {Object.values(splitConfig.userShares).reduce((a, b) => a + (parseFloat(b) || 0), 0).toFixed(2)}%
+                </p>
+              )}
+              {splitConfig.shareType === SHARE_TYPES.EXACT_AMOUNT && formData.amount && (
+                <p className="hint">
+                  Total: ${Object.values(splitConfig.userShares).reduce((a, b) => a + (parseFloat(b) || 0), 0).toFixed(2)} / ${parseFloat(formData.amount).toFixed(2)}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="form-actions">
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? (editingExpense ? 'Updating...' : 'Creating...') : (editingExpense ? 'Update Expense' : 'Create Expense')}

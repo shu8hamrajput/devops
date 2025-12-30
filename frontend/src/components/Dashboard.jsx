@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
-import { groupAPI, expenseAPI, userAPI, tokenManager } from '../services/api'
+import { groupAPI, expenseAPI, userAPI, balanceAPI, tokenManager } from '../services/api'
 import './Dashboard.css'
 
 function Dashboard() {
   const [groups, setGroups] = useState([])
   const [users, setUsers] = useState([])
   const [allUsers, setAllUsers] = useState([])
+  const [userBalance, setUserBalance] = useState(null)
+  const [groupBalances, setGroupBalances] = useState({})
+  const [userToUserBalances, setUserToUserBalances] = useState({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [showExpenseForm, setShowExpenseForm] = useState(false)
@@ -49,12 +52,33 @@ function Dashboard() {
     setLoading(true)
     setError(null)
     try {
-      const [groupsRes, expensesRes] = await Promise.all([
+      const [groupsRes, expensesRes, balanceRes] = await Promise.all([
         groupAPI.getUserGroups(userId),
-        expenseAPI.getUserExpenses(userId)
+        expenseAPI.getUserExpenses(userId),
+        balanceAPI.getUserBalance(userId).catch(() => null)
       ])
       
       setGroups(groupsRes.data || [])
+      
+      // Load user balance
+      if (balanceRes) {
+        setUserBalance(balanceRes.data)
+      }
+      
+      // Load group balances
+      const groupBalancePromises = (groupsRes.data || []).map(group =>
+        balanceAPI.getGroupBalance(group.id)
+          .then(res => ({ groupId: group.id, balance: res.data }))
+          .catch(() => null)
+      )
+      const groupBalanceResults = await Promise.all(groupBalancePromises)
+      const groupBalanceMap = {}
+      groupBalanceResults.forEach(result => {
+        if (result) {
+          groupBalanceMap[result.groupId] = result.balance
+        }
+      })
+      setGroupBalances(groupBalanceMap)
       
       // Extract unique users from expenses
       const userSet = new Set()
@@ -67,12 +91,26 @@ function Dashboard() {
         }
       })
       
-      // Get user details for each user ID
-      const userPromises = Array.from(userSet).map(userId => 
-        userAPI.getUser(userId).catch(() => null)
+      // Get user details and balances for each user ID
+      const userPromises = Array.from(userSet).map(otherUserId => 
+        Promise.all([
+          userAPI.getUser(otherUserId).catch(() => null),
+          balanceAPI.getUserToUserBalance(userId, otherUserId).catch(() => null)
+        ]).then(([userRes, balanceRes]) => ({
+          user: userRes?.data,
+          balance: balanceRes?.data?.balance || 0
+        }))
       )
       const userResults = await Promise.all(userPromises)
-      setUsers(userResults.filter(u => u !== null).map(u => u.data))
+      setUsers(userResults.filter(u => u.user !== null).map(u => u.user))
+      
+      const userBalanceMap = {}
+      userResults.forEach(result => {
+        if (result.user) {
+          userBalanceMap[result.user.id] = result.balance
+        }
+      })
+      setUserToUserBalances(userBalanceMap)
     } catch (err) {
       const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to load dashboard'
       setError(typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage))
@@ -237,6 +275,31 @@ function Dashboard() {
 
       {loading && !showExpenseForm && <div className="loading">Loading dashboard...</div>}
 
+      {userBalance && (
+        <div className="balance-cards">
+          <div className="balance-card">
+            <h3>Your Balance Summary</h3>
+            <div className="balance-details">
+              <div className="balance-item">
+                <span className="balance-label">You Owe:</span>
+                <span className="balance-value negative">${userBalance.total_owed.toFixed(2)}</span>
+              </div>
+              <div className="balance-item">
+                <span className="balance-label">You Are Owed:</span>
+                <span className="balance-value positive">${userBalance.total_owed_to.toFixed(2)}</span>
+              </div>
+              <div className="balance-item net">
+                <span className="balance-label">Net Balance:</span>
+                <span className={`balance-value ${userBalance.net_balance >= 0 ? 'positive' : 'negative'}`}>
+                  ${Math.abs(userBalance.net_balance).toFixed(2)}
+                  {userBalance.net_balance >= 0 ? ' owed to you' : ' you owe'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="dashboard-content">
         <div className="dashboard-section">
           <h3>My Groups</h3>
@@ -244,19 +307,41 @@ function Dashboard() {
             <div className="empty-state">No groups found. Create a group to get started!</div>
           ) : (
             <div className="groups-list">
-              {groups.map((group) => (
-                <div key={group.id} className="group-card">
-                  <div className="group-header">
-                    <h4>{group.name}</h4>
-                    <span className="group-meta">
-                      {new Date(group.updated_at).toLocaleDateString()}
-                    </span>
+              {groups.map((group) => {
+                const groupBalance = groupBalances[group.id]
+                return (
+                  <div key={group.id} className="group-card">
+                    <div className="group-header">
+                      <h4>{group.name}</h4>
+                      <span className="group-meta">
+                        {new Date(group.updated_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="group-members">
+                      <strong>Members:</strong> {group.user_ids.length}
+                    </div>
+                    {groupBalance && groupBalance.balances && groupBalance.balances.length > 0 && (
+                      <div className="group-balance">
+                        <strong>Balances:</strong>
+                        <ul>
+                          {groupBalance.balances.slice(0, 3).map((balance, idx) => {
+                            const fromUser = allUsers.find(u => u.id === balance.from_user_id)
+                            const toUser = allUsers.find(u => u.id === balance.to_user_id)
+                            return (
+                              <li key={idx}>
+                                {fromUser?.name || balance.from_user_id} owes {toUser?.name || balance.to_user_id} ${balance.amount.toFixed(2)}
+                              </li>
+                            )
+                          })}
+                          {groupBalance.balances.length > 3 && (
+                            <li className="more-balances">+{groupBalance.balances.length - 3} more</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                  <div className="group-members">
-                    <strong>Members:</strong> {group.user_ids.length}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -267,14 +352,26 @@ function Dashboard() {
             <div className="empty-state">No expenses with other users yet.</div>
           ) : (
             <div className="users-list">
-              {users.map((user) => (
-                <div key={user.id} className="user-card">
-                  <div className="user-info">
-                    <h4>{user.name}</h4>
-                    <p>{user.email}</p>
+              {users.map((user) => {
+                const balance = userToUserBalances[user.id] || 0
+                return (
+                  <div key={user.id} className="user-card">
+                    <div className="user-info">
+                      <h4>{user.name}</h4>
+                      <p>{user.email}</p>
+                    </div>
+                    {balance !== 0 && (
+                      <div className="user-balance">
+                        {balance > 0 ? (
+                          <span className="balance-positive">You owe ${balance.toFixed(2)}</span>
+                        ) : (
+                          <span className="balance-negative">Owes you ${Math.abs(balance).toFixed(2)}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
