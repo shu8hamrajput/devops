@@ -9,10 +9,21 @@ services:
     environment:
       - PORT=8080
       - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=splitwise
+      - DB_SSLMODE=disable
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=
+      - JWT_SECRET=your-secret-key-change-in-production
     networks:
       - splitwise-network
     depends_on:
       - jaeger
+      - postgres
+      - redis
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
@@ -35,12 +46,47 @@ services:
       - splitwise-network
     restart: unless-stopped
 
+  postgres:
+    image: postgres:15-alpine
+    container_name: splitwise-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=splitwise
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - splitwise-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: splitwise-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - splitwise-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: splitwise-jaeger
     ports:
       - "16686:16686"  # Jaeger UI
       - "14268:14268"  # Jaeger collector HTTP
+      - "4318:4318"    # OTLP HTTP endpoint (for frontend tracing)
       - "6831:6831/udp" # Jaeger agent UDP
       - "6832:6832/udp" # Jaeger agent UDP
     environment:
@@ -48,6 +94,9 @@ services:
     networks:
       - splitwise-network
     restart: unless-stopped
+
+volumes:
+  postgres_data:
 
 networks:
   splitwise-network:

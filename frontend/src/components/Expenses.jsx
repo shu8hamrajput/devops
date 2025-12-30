@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { expenseAPI, groupAPI, userAPI } from '../services/api'
+import { useToastContext } from '../context/ToastContext'
 import './Expenses.css'
 
 function Expenses() {
@@ -8,6 +9,7 @@ function Expenses() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const { success, error: showError } = useToastContext()
   const [formData, setFormData] = useState({ 
     description: '', 
     amount: '', 
@@ -15,6 +17,8 @@ function Expenses() {
     group_id: '' 
   })
   const [showForm, setShowForm] = useState(false)
+  const [editingExpense, setEditingExpense] = useState(null)
+  const [deletingExpense, setDeletingExpense] = useState(null)
   const [selectedGroup, setSelectedGroup] = useState('')
 
   useEffect(() => {
@@ -37,7 +41,8 @@ function Expenses() {
       const response = await expenseAPI.getExpensesByGroup(groupId)
       setExpenses(response.data)
     } catch (err) {
-      setError(err.response?.data || 'Failed to load expenses')
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to load expenses';
+      setError(typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage))
       setExpenses([])
     } finally {
       setLoading(false)
@@ -45,10 +50,13 @@ function Expenses() {
   }
 
   const loadGroups = async () => {
-    // Note: Backend doesn't have a GET /groups endpoint
-    // Groups will need to be loaded individually or stored locally
-    // For now, we'll use an empty array and let users enter group IDs manually
-    setGroups([])
+    try {
+      const response = await groupAPI.getAllGroups()
+      setGroups(response.data || [])
+    } catch (err) {
+      console.error('Failed to load groups:', err)
+      setGroups([])
+    }
   }
 
   const loadUsers = async () => {
@@ -65,22 +73,87 @@ function Expenses() {
     setLoading(true)
     setError(null)
     try {
-      await expenseAPI.createExpense(
-        formData.description,
-        parseFloat(formData.amount),
-        formData.paid_by,
-        formData.group_id
-      )
+      if (editingExpense) {
+        // Update existing expense
+        await expenseAPI.updateExpense(
+          editingExpense.id,
+          formData.description,
+          parseFloat(formData.amount),
+          formData.paid_by,
+          formData.group_id || null,
+          null
+        )
+        setEditingExpense(null)
+      } else {
+        // Create new expense
+        await expenseAPI.createExpense(
+          formData.description,
+          parseFloat(formData.amount),
+          formData.paid_by,
+          formData.group_id
+        )
+      }
       setFormData({ description: '', amount: '', paid_by: '', group_id: '' })
       setShowForm(false)
+      success(editingExpense ? 'Expense updated successfully' : 'Expense created successfully')
       if (selectedGroup) {
         loadExpenses(selectedGroup)
       }
     } catch (err) {
-      setError(err.response?.data || 'Failed to create expense')
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || (editingExpense ? 'Failed to update expense' : 'Failed to create expense');
+      const message = typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage)
+      setError(message)
+      showError(message)
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleEdit = (expense) => {
+    setEditingExpense(expense)
+    setFormData({
+      description: expense.description,
+      amount: expense.amount.toString(),
+      paid_by: expense.paid_by,
+      group_id: expense.group_id || ''
+    })
+    setShowForm(true)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingExpense(null)
+    setFormData({ description: '', amount: '', paid_by: '', group_id: '' })
+    setShowForm(false)
+  }
+
+  const handleDeleteClick = (expense) => {
+    setDeletingExpense(expense)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingExpense) return
+    
+    setLoading(true)
+    setError(null)
+    try {
+      await expenseAPI.deleteExpense(deletingExpense.id)
+      setDeletingExpense(null)
+      success('Expense deleted successfully')
+      if (selectedGroup) {
+        loadExpenses(selectedGroup)
+      }
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to delete expense';
+      const message = typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage)
+      setError(message)
+      showError(message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeletingExpense(null)
   }
 
   const getUserName = (userId) => {
@@ -89,6 +162,7 @@ function Expenses() {
   }
 
   const getGroupName = (groupId) => {
+    if (!groupId) return 'N/A'
     const group = groups.find(g => g.id === groupId)
     return group ? group.name : groupId
   }
@@ -97,34 +171,57 @@ function Expenses() {
     <div className="expenses-container">
       <div className="section-header">
         <h2>Expenses</h2>
-        <button 
-          className="btn-primary"
-          onClick={() => setShowForm(!showForm)}
-        >
-          {showForm ? 'Cancel' : '+ Add Expense'}
-        </button>
+        {!editingExpense && (
+          <button 
+            className="btn-primary"
+            onClick={() => setShowForm(!showForm)}
+          >
+            {showForm ? 'Cancel' : '+ Add Expense'}
+          </button>
+        )}
       </div>
 
       <div className="filter-section">
-        <label>Filter by Group ID:</label>
-        <input
-          type="text"
-          placeholder="Enter group ID to view expenses"
+        <label>Filter by Group:</label>
+        <select
           value={selectedGroup}
           onChange={(e) => setSelectedGroup(e.target.value)}
-          className="group-input"
-        />
-        <button 
-          className="btn-primary"
-          onClick={() => selectedGroup && loadExpenses(selectedGroup)}
-          disabled={!selectedGroup || loading}
+          className="group-select"
         >
-          Load Expenses
-        </button>
+          <option value="">Select a group</option>
+          {groups.map(group => (
+            <option key={group.id} value={group.id}>
+              {group.name}
+            </option>
+          ))}
+        </select>
+        {selectedGroup && (
+          <button 
+            className="btn-secondary"
+            onClick={() => {
+              setSelectedGroup('')
+              setExpenses([])
+            }}
+          >
+            Clear Filter
+          </button>
+        )}
       </div>
 
       {showForm && (
         <form className="expense-form" onSubmit={handleSubmit}>
+          <div className="form-header">
+            <h3>{editingExpense ? 'Edit Expense' : 'Add Expense'}</h3>
+            {editingExpense && (
+              <button 
+                type="button"
+                className="btn-secondary"
+                onClick={handleCancelEdit}
+              >
+                Cancel
+              </button>
+            )}
+          </div>
           <div className="form-group">
             <label>Description</label>
             <input
@@ -161,20 +258,55 @@ function Expenses() {
             </select>
           </div>
           <div className="form-group">
-            <label>Group ID</label>
-            <input
-              type="text"
-              placeholder="Enter group ID"
+            <label>Group</label>
+            <select
               value={formData.group_id}
               onChange={(e) => setFormData({ ...formData, group_id: e.target.value })}
               required
-            />
-            <p className="hint">Enter the ID of the group this expense belongs to</p>
+            >
+              <option value="">Select a group</option>
+              {groups.map(group => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+            {groups.length === 0 && (
+              <p className="hint">No groups available. Create a group first.</p>
+            )}
           </div>
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Creating...' : 'Create Expense'}
-          </button>
+          <div className="form-actions">
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? (editingExpense ? 'Updating...' : 'Creating...') : (editingExpense ? 'Update Expense' : 'Create Expense')}
+            </button>
+          </div>
         </form>
+      )}
+
+      {deletingExpense && (
+        <div className="modal-overlay" onClick={handleDeleteCancel}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Expense</h3>
+            <p>Are you sure you want to delete the expense "{deletingExpense.description}"?</p>
+            <p className="warning-text">This action cannot be undone.</p>
+            <div className="modal-actions">
+              <button 
+                className="btn-secondary"
+                onClick={handleDeleteCancel}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-danger"
+                onClick={handleDeleteConfirm}
+                disabled={loading}
+              >
+                {loading ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {error && <div className="error-message">{error}</div>}
@@ -183,7 +315,7 @@ function Expenses() {
 
       {!selectedGroup && (
         <div className="info-message">
-          Enter a group ID above to view its expenses
+          Select a group above to view its expenses
         </div>
       )}
 
@@ -196,10 +328,31 @@ function Expenses() {
             </div>
             <div className="expense-details">
               <p><strong>Paid by:</strong> {getUserName(expense.paid_by)}</p>
-              <p><strong>Group:</strong> {getGroupName(expense.group_id)}</p>
+              {expense.group_id && (
+                <p><strong>Group:</strong> {getGroupName(expense.group_id)}</p>
+              )}
+              {expense.owed_by && (
+                <p><strong>Owed by:</strong> {getUserName(expense.owed_by)}</p>
+              )}
               {expense.created_at && (
                 <p><strong>Date:</strong> {new Date(expense.created_at).toLocaleString()}</p>
               )}
+            </div>
+            <div className="expense-actions">
+              <button 
+                className="btn-edit"
+                onClick={() => handleEdit(expense)}
+                title="Edit expense"
+              >
+                Edit
+              </button>
+              <button 
+                className="btn-delete"
+                onClick={() => handleDeleteClick(expense)}
+                title="Delete expense"
+              >
+                Delete
+              </button>
             </div>
             <div className="expense-id">ID: {expense.id}</div>
           </div>

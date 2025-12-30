@@ -43,6 +43,20 @@ func (r *memoryUserRepository) FindByID(id string) (*entity.User, error) {
 	return user, nil
 }
 
+// FindByEmail retrieves a user by email
+func (r *memoryUserRepository) FindByEmail(email string) (*entity.User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, user := range r.users {
+		if user.Email == email {
+			return user, nil
+		}
+	}
+
+	return nil, fmt.Errorf("user not found with email: %s", email)
+}
+
 // FindAll retrieves all users
 func (r *memoryUserRepository) FindAll() ([]*entity.User, error) {
 	r.mu.RLock()

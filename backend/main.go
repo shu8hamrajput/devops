@@ -43,17 +43,45 @@ func main() {
 		}
 	}
 
+	// Initialize database connections
+	log.Println("Connecting to PostgreSQL...")
+	db, err := repository.InitPostgresDB()
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+	log.Println("PostgreSQL connected successfully")
+
+	// Create database tables
+	if err := repository.CreateTables(db); err != nil {
+		log.Fatalf("Failed to create tables: %v", err)
+	}
+	log.Println("Database tables initialized")
+
+	// Initialize Redis
+	log.Println("Connecting to Redis...")
+	redisClient, err := repository.InitRedisClient()
+	if err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+	defer redisClient.Close()
+	log.Println("Redis connected successfully")
+
 	// Initialize outbound adapters (repositories)
-	userRepo := repository.NewMemoryUserRepository()
-	expenseRepo := repository.NewMemoryExpenseRepository()
-	groupRepo := repository.NewMemoryGroupRepository()
+	userRepo := repository.NewPostgresUserRepository(db)
+	authRepo := repository.NewPostgresAuthRepository(db)
+	cache := repository.NewRedisCache(redisClient)
+	expenseRepo := repository.NewPostgresExpenseRepository(db)
+	groupRepo := repository.NewPostgresGroupRepository(db)
 
 	// Initialize application services (implementing inbound ports)
+	authService := service.NewAuthService(authRepo, cache)
 	userService := service.NewUserService(userRepo)
 	expenseService := service.NewExpenseService(expenseRepo, userRepo, groupRepo)
 	groupService := service.NewGroupService(groupRepo, userRepo)
 
 	// Initialize inbound adapters (HTTP handlers)
+	authHandler := httphandler.NewAuthHandler(authService)
 	userHandler := httphandler.NewUserHandler(userService)
 	expenseHandler := httphandler.NewExpenseHandler(expenseService)
 	groupHandler := httphandler.NewGroupHandler(groupService)
@@ -64,20 +92,39 @@ func main() {
 	// Add tracing middleware
 	router.Use(httphandler.TracingMiddleware())
 
+	// Public auth routes
+	router.HandleFunc("/auth/register", authHandler.Register).Methods("POST")
+	router.HandleFunc("/auth/login", authHandler.Login).Methods("POST")
+	router.HandleFunc("/auth/refresh", authHandler.RefreshToken).Methods("POST")
+
+	// Protected routes (require authentication)
+	protectedRouter := router.PathPrefix("").Subrouter()
+	protectedRouter.Use(httphandler.AuthMiddleware(authService))
+
 	// User routes
 	router.HandleFunc("/users", userHandler.CreateUser).Methods("POST")
 	router.HandleFunc("/users", userHandler.GetAllUsers).Methods("GET")
 	router.HandleFunc("/users/{id}", userHandler.GetUser).Methods("GET")
+	
+	// Protected user-specific routes
+	protectedRouter.HandleFunc("/users/{user_id}/groups", groupHandler.GetGroupsByUser).Methods("GET")
+	protectedRouter.HandleFunc("/users/{user_id}/expenses", expenseHandler.GetExpensesByUser).Methods("GET")
 
 	// Expense routes
-	router.HandleFunc("/expenses", expenseHandler.CreateExpense).Methods("POST")
+	protectedRouter.HandleFunc("/expenses", expenseHandler.CreateExpense).Methods("POST")
 	router.HandleFunc("/expenses/{id}", expenseHandler.GetExpense).Methods("GET")
+	protectedRouter.HandleFunc("/expenses/{id}", expenseHandler.UpdateExpense).Methods("PUT")
+	protectedRouter.HandleFunc("/expenses/{id}", expenseHandler.DeleteExpense).Methods("DELETE")
 	router.HandleFunc("/groups/{group_id}/expenses", expenseHandler.GetExpensesByGroup).Methods("GET")
 
 	// Group routes
-	router.HandleFunc("/groups", groupHandler.CreateGroup).Methods("POST")
+	protectedRouter.HandleFunc("/groups", groupHandler.CreateGroup).Methods("POST")
+	router.HandleFunc("/groups", groupHandler.GetAllGroups).Methods("GET")
 	router.HandleFunc("/groups/{id}", groupHandler.GetGroup).Methods("GET")
-	router.HandleFunc("/groups/{id}/users", groupHandler.AddUserToGroup).Methods("POST")
+	protectedRouter.HandleFunc("/groups/{id}", groupHandler.UpdateGroup).Methods("PUT")
+	protectedRouter.HandleFunc("/groups/{id}", groupHandler.DeleteGroup).Methods("DELETE")
+	protectedRouter.HandleFunc("/groups/{id}/users", groupHandler.AddUserToGroup).Methods("POST")
+	protectedRouter.HandleFunc("/groups/{id}/users/{user_id}", groupHandler.RemoveUserFromGroup).Methods("DELETE")
 
 	// Health check
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -101,15 +148,26 @@ func main() {
 
 	fmt.Printf("Server starting on port %s\n", port)
 	fmt.Println("Available endpoints:")
+	fmt.Println("  POST   /auth/register")
+	fmt.Println("  POST   /auth/login")
+	fmt.Println("  POST   /auth/refresh")
 	fmt.Println("  POST   /users")
 	fmt.Println("  GET    /users")
 	fmt.Println("  GET    /users/{id}")
-	fmt.Println("  POST   /expenses")
+	fmt.Println("  GET    /users/{user_id}/groups (protected)")
+	fmt.Println("  GET    /users/{user_id}/expenses (protected)")
+	fmt.Println("  POST   /expenses (protected)")
 	fmt.Println("  GET    /expenses/{id}")
+	fmt.Println("  PUT    /expenses/{id} (protected)")
+	fmt.Println("  DELETE /expenses/{id} (protected)")
 	fmt.Println("  GET    /groups/{group_id}/expenses")
-	fmt.Println("  POST   /groups")
+	fmt.Println("  POST   /groups (protected)")
+	fmt.Println("  GET    /groups")
 	fmt.Println("  GET    /groups/{id}")
-	fmt.Println("  POST   /groups/{id}/users")
+	fmt.Println("  PUT    /groups/{id} (protected)")
+	fmt.Println("  DELETE /groups/{id} (protected)")
+	fmt.Println("  POST   /groups/{id}/users (protected)")
+	fmt.Println("  DELETE /groups/{id}/users/{user_id} (protected)")
 	fmt.Println("  GET    /health")
 
 	// Setup graceful shutdown

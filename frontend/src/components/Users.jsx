@@ -20,7 +20,8 @@ function Users() {
       const response = await userAPI.getAllUsers()
       setUsers(response.data)
     } catch (err) {
-      setError(err.response?.data || 'Failed to load users')
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to load users';
+      setError(typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage))
     } finally {
       setLoading(false)
     }
@@ -36,7 +37,8 @@ function Users() {
       setShowForm(false)
       loadUsers()
     } catch (err) {
-      setError(err.response?.data || 'Failed to create user')
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to create user';
+      setError(typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage))
     } finally {
       setLoading(false)
     }

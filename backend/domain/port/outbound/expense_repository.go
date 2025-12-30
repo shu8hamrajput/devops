@@ -7,6 +7,9 @@ type ExpenseRepository interface {
 	Create(expense *entity.Expense) error
 	FindByID(id string) (*entity.Expense, error)
 	FindByGroupID(groupID string) ([]*entity.Expense, error)
+	FindByUserID(userID string) ([]*entity.Expense, error)
+	Update(expense *entity.Expense) error
+	Delete(id string) error
 }
 
 

@@ -7,6 +7,7 @@ import "splitwise/domain/entity"
 type UserRepository interface {
 	Create(user *entity.User) error
 	FindByID(id string) (*entity.User, error)
+	FindByEmail(email string) (*entity.User, error)
 	FindAll() ([]*entity.User, error)
 }
 
