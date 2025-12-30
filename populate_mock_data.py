@@ -8,8 +8,14 @@ This script creates:
 - Expenses with splits
 - User-to-user expenses
 
+Requirements:
+    pip3 install psycopg2-binary
+
 Usage:
     python3 populate_mock_data.py
+
+Or with environment variables:
+    DB_HOST=localhost DB_PORT=5432 DB_NAME=splitwise DB_USER=postgres DB_PASSWORD=postgres python3 populate_mock_data.py
 """
 
 import psycopg2
